@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ccstitch traces</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dd;
+  --accent: #2f5fd0; --err: #c23b22; --warn: #a86b00; --ok: #2c7a3f; --hover: #f0efe9;
+  --sel: #e6ecfa;
+  --k-interaction: #6b5bd2; --k-llm: #2f7fd0; --k-tool: #c77a12; --k-tool-step: #d8a24a;
+  --k-session: #4a8f6a; --k-job: #8a6a3a; --k-group: #888780; --k-other: #9a9a94;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9c9b94; --line: #33322f;
+    --accent: #7ea2ff; --err: #ff7a5c; --warn: #e0a940; --ok: #6cc486; --hover: #2a2a27;
+    --sel: #263252;
+    --k-interaction: #9d90ff; --k-llm: #63a8ff; --k-tool: #f0a443; --k-tool-step: #e8c07a;
+    --k-session: #6cc08e; --k-job: #c9a26a; --k-group: #8d8c86; --k-other: #77766f;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161615; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9c9b94; --line: #33322f;
+  --accent: #7ea2ff; --err: #ff7a5c; --warn: #e0a940; --ok: #6cc486; --hover: #2a2a27;
+  --sel: #263252;
+  --k-interaction: #9d90ff; --k-llm: #63a8ff; --k-tool: #f0a443; --k-tool-step: #e8c07a;
+  --k-session: #6cc08e; --k-job: #c9a26a; --k-group: #8d8c86; --k-other: #77766f;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
+header h1 { font-size: 15px; margin: 0; font-weight: 650; letter-spacing: .01em; }
+header .sp { flex: 1; }
+.pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.pill.up { color: var(--ok); border-color: currentColor; }
+.pill.down { color: var(--err); border-color: currentColor; }
+main { padding: 16px; max-width: 1400px; margin: 0 auto; }
+select, button { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+button { cursor: pointer; }
+button:hover { background: var(--hover); }
+label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; }
+.banner { padding: 12px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); margin-bottom: 16px; }
+.banner.bad { border-color: var(--err); }
+.banner h2 { margin: 0 0 6px; font-size: 15px; }
+.banner p { margin: 4px 0; color: var(--muted); }
+code, .mono { font-family: var(--mono); font-size: 12.5px; }
+pre.cmd { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin: 6px 0; overflow-x: auto; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.stat .v { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.stat .k { font-size: 12px; color: var(--muted); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.card.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; background: var(--panel); }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr.row { cursor: pointer; }
+tr.row:hover td { background: var(--hover); }
+.tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 4px; border: 1px solid currentColor; margin-left: 6px; vertical-align: 1px; }
+.tag.rep { color: var(--warn); } .tag.err { color: var(--err); } .tag.live { color: var(--ok); }
+.muted { color: var(--muted); }
+.trunc { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.toolbar .sp { flex: 1; }
+/* trace view */
+.tview { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 12px; align-items: start; }
+@media (max-width: 900px) { .tview { grid-template-columns: minmax(0, 1fr); } .wf-col { display: none; } }
+.tree { font-size: 13px; }
+.trow { display: grid; grid-template-columns: minmax(220px, 42%) 70px minmax(0, 1fr); align-items: center; border-bottom: 1px solid var(--line); cursor: pointer; min-height: 28px; }
+.trow:hover { background: var(--hover); }
+.trow.sel { background: var(--sel); }
+.trow .nm { display: flex; align-items: center; gap: 6px; padding: 3px 8px; overflow: hidden; white-space: nowrap; }
+.trow .nm .lbl { overflow: hidden; text-overflow: ellipsis; }
+.trow .du { text-align: right; padding: 3px 8px; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+.caret { width: 14px; flex: none; text-align: center; color: var(--muted); user-select: none; }
+.kind { flex: none; font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; color: var(--k-other); min-width: 64px; }
+.wf-col { position: relative; height: 28px; border-left: 1px solid var(--line); }
+.bar { position: absolute; top: 8px; height: 12px; border-radius: 3px; min-width: 2px; opacity: .9; }
+.trow.err .lbl { color: var(--err); }
+.thead { display: grid; grid-template-columns: minmax(220px, 42%) 70px minmax(0, 1fr); font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); padding: 6px 0; font-weight: 600; }
+.thead div { padding: 0 8px; }
+.detail { position: sticky; top: 64px; padding: 12px; font-size: 13px; max-height: calc(100vh - 80px); overflow: auto; }
+.detail h3 { margin: 0 0 8px; font-size: 14px; word-break: break-word; }
+.kv { display: grid; grid-template-columns: fit-content(48%) minmax(0, 1fr); gap: 3px 10px; }
+.kv .k { color: var(--muted); font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.kv .v { font-family: var(--mono); font-size: 12px; word-break: break-word; }
+.sec { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); font-weight: 600; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+@media (max-width: 640px) {
+  main { padding: 12px; }
+  .hide-sm { display: none; }
+  .trunc { max-width: 40vw; }
+  th, td { padding: 7px 6px; }
+  .trow, .thead { grid-template-columns: minmax(0, 1fr) 64px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="/" style="color:inherit">ccstitch</a></h1>
+  <span class="muted" id="crumb"></span>
+  <span class="sp"></span>
+  <span class="pill" id="conn">checking collector</span>
+</header>
+<main id="app"></main>
+<script>
+"use strict";
+const $app = document.getElementById("app");
+const $conn = document.getElementById("conn");
+const $crumb = document.getElementById("crumb");
+const KINDS = ["interaction", "llm", "tool", "tool-step", "session", "job", "group"];
+
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === "class") e.className = v;
+    else if (k === "style") e.style.cssText = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? "" : String(v));
+  }
+  for (const c of kids.flat()) {
+    if (c === null || c === undefined || c === false) continue;
+    e.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return e;
+}
+function fmtMs(ms) {
+  if (ms === null || ms === undefined || isNaN(ms)) return "";
+  if (ms < 1) return "<1 ms";
+  if (ms < 1000) return Math.round(ms) + " ms";
+  const s = ms / 1000;
+  if (s < 60) return s.toFixed(s < 10 ? 2 : 1) + " s";
+  const m = Math.floor(s / 60), r = Math.round(s % 60);
+  if (m < 60) return m + "m " + String(r).padStart(2, "0") + "s";
+  return Math.floor(m / 60) + "h " + String(m % 60).padStart(2, "0") + "m";
+}
+function fmtN(n) {
+  n = Number(n || 0);
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+  if (n >= 1e4) return (n / 1e3).toFixed(0) + "k";
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
+  return String(n);
+}
+function fmtUsd(x) { x = Number(x || 0); return "$" + (x >= 100 ? x.toFixed(0) : x >= 1 ? x.toFixed(2) : x.toFixed(3)); }
+function ago(ns) {
+  if (!ns) return "";
+  const s = (Date.now() - ns / 1e6) / 1000;
+  if (s < 60) return "just now";
+  if (s < 3600) return Math.floor(s / 60) + " min ago";
+  if (s < 86400) return Math.floor(s / 3600) + " h ago";
+  return Math.floor(s / 86400) + " d ago";
+}
+function who(agent, cwd) {
+  if (agent && agent !== "unattributed") return agent;
+  const base = (cwd || "").split("/").filter(Boolean).pop();
+  return base || "unattributed";
+}
+function when(ns) { return ns ? new Date(ns / 1e6).toLocaleString() : ""; }
+
+async function api(path) {
+  let r;
+  try { r = await fetch(path, { cache: "no-store" }); }
+  catch (e) { const err = new Error("unreachable"); err.dead = true; throw err; }
+  let body = null;
+  try { body = await r.json(); } catch (e) { /* non-JSON */ }
+  if (!r.ok) { const err = new Error((body && body.error) || ("HTTP " + r.status)); err.status = r.status; throw err; }
+  return body;
+}
+function setConn(h) {
+  if (!h) { $conn.textContent = "collector unreachable"; $conn.className = "pill down"; return; }
+  const age = h.last_span_age_s;
+  $conn.textContent = h.off ? "collector up, OFF switch set" :
+    "collector up" + (age === null || age === undefined ? ", no spans since start" : ", last span " + fmtMs(age * 1000) + " ago");
+  $conn.className = "pill " + (h.off ? "down" : "up");
+}
+function deadBanner(retryIn) {
+  return el("div", { class: "banner bad" },
+    el("h2", {}, "The collector is not answering"),
+    el("p", {}, "This page is served by the collector, so it was up when the page loaded and has stopped since. Nothing is lost on the Claude Code side: the CLI drops spans silently while the collector is down, and session links wait in a spool file until it is back."),
+    el("pre", { class: "cmd" }, "ccstitch serve"),
+    el("p", {}, retryIn ? "Retrying in " + retryIn + " s." : ""));
+}
+function setupBanner(h, hours) {
+  const never = !h || !h.spans_received;
+  return el("div", { class: "banner" },
+    el("h2", {}, "No traces in the last " + hours + " h"),
+    never ? el("p", {}, "This collector has received no spans since it started" + (h ? " " + fmtMs(h.uptime_s * 1000) + " ago" : "") + ". If Claude Code is not set up yet:") :
+            el("p", {}, "Spans have arrived since the collector started, just none in this window. Try a longer range."),
+    never ? el("pre", { class: "cmd" }, "ccstitch install      # adds the env block + SessionStart hook to ~/.claude/settings.json\nclaude -p \"say hi\"     # a NEW session; running ones keep the env they started with") : null,
+    never ? el("p", {}, "Then run ", el("code", {}, "ccstitch status"), " to check both halves.") : null);
+}
+
+// ── trace list ─────────────────────────────────────────────────────────────
+let timer = null;
+function schedule(fn, s) { clearTimeout(timer); timer = setTimeout(() => { if (document.hidden) schedule(fn, s); else fn(); }, s * 1000); }
+
+const listState = { hours: Number(localGet("hours") || 24), errors: false };
+function localGet(k) { try { return localStorage.getItem("ccstitch." + k); } catch (e) { return null; } }
+function localSet(k, v) { try { localStorage.setItem("ccstitch." + k, v); } catch (e) { /* private mode */ } }
+
+async function renderList() {
+  $crumb.textContent = "";
+  document.title = "ccstitch traces";
+  let h = null, ov = null, traces = null;
+  try {
+    h = await api("/healthz");
+    const q = "hours=" + listState.hours;
+    [ov, traces] = await Promise.all([api("/api/overview?" + q),
+      api("/api/traces?" + q + "&limit=200" + (listState.errors ? "&errors=1" : ""))]);
+  } catch (e) {
+    setConn(null);
+    if (e.dead) { $app.replaceChildren(deadBanner(10)); schedule(renderList, 10); return; }
+    $app.replaceChildren(el("div", { class: "banner bad" }, el("h2", {}, "Could not load traces"), el("p", {}, e.message)));
+    schedule(renderList, 15); return;
+  }
+  setConn(h);
+  const rangeSel = el("select", { onchange: (ev) => { listState.hours = Number(ev.target.value); localSet("hours", ev.target.value); renderList(); } },
+    [1, 6, 24, 72, 168, 720].map((x) => el("option", { value: x, selected: x === listState.hours }, x < 24 ? x + " h" : (x / 24) + " d")));
+  const errChk = el("input", { type: "checkbox", checked: listState.errors, onchange: (ev) => { listState.errors = ev.target.checked; renderList(); } });
+  const list = traces.traces || [];
+  const stats = el("div", { class: "stats" },
+    stat(fmtN(ov.traces), "traces"), stat(fmtN(ov.sessions), "sessions"),
+    stat(fmtN(ov.llm_calls), "model calls"), stat(fmtN(ov.tool_calls), "tool calls"),
+    stat(fmtN(ov.errors), "errors"), stat(fmtN(ov.tokens), "tokens"),
+    stat(ov.cache_hit_rate === null ? "n/a" : Math.round(ov.cache_hit_rate * 100) + "%", "prompt from cache"),
+    stat(fmtUsd(ov.usd_equiv), "list-price estimate"),
+    stat(ov.sessions_repaired + " / " + ov.sessions_settled, "sessions repaired (#99607)"));
+  const toolbar = el("div", { class: "toolbar" }, el("span", { class: "muted" }, "Range"), rangeSel,
+    el("label", { class: "chk" }, errChk, "errors only"), el("span", { class: "sp" }),
+    el("span", { class: "muted" }, "refreshes every 15 s"));
+  let body;
+  if (!list.length) {
+    body = listState.errors && ov.traces ? el("div", { class: "banner" }, el("h2", {}, "No traces with errors in this range")) : setupBanner(h, listState.hours);
+  } else {
+    body = el("div", { class: "card scroll" }, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "When"), el("th", {}, "Agent / session"),
+        el("th", { class: "n" }, "Duration"), el("th", { class: "n hide-sm" }, "Sessions"),
+        el("th", { class: "n hide-sm" }, "Model"), el("th", { class: "n hide-sm" }, "Tools"),
+        el("th", { class: "n hide-sm" }, "Tokens"), el("th", { class: "n" }, "Est. $"))),
+      el("tbody", {}, list.map((t) => el("tr", { class: "row", onclick: () => go("/t/" + encodeURIComponent(t.id)) },
+        el("td", { title: when(t.last_ns) }, ago(t.last_ns)),
+        el("td", {}, el("a", { href: "/t/" + encodeURIComponent(t.id), onclick: (ev) => { ev.preventDefault(); } }, who(t.agent, t.cwd)),
+          t.active ? el("span", { class: "tag live" }, "live") : null,
+          t.repaired ? el("span", { class: "tag rep", title: "Orphaned spans regrouped under their session (anthropics/claude-code#99607)" }, "repaired") : null,
+          t.errors ? el("span", { class: "tag err" }, t.errors + " err") : null,
+          el("div", { class: "muted mono trunc", title: t.cwd || "" }, t.cwd || t.id)),
+        el("td", { class: "n" }, fmtMs(t.dur_ms)),
+        el("td", { class: "n hide-sm" }, t.sessions), el("td", { class: "n hide-sm" }, t.llm),
+        el("td", { class: "n hide-sm" }, t.tools), el("td", { class: "n hide-sm" }, fmtN(t.tokens)),
+        el("td", { class: "n" }, fmtUsd(t.usd)))))));
+  }
+  $app.replaceChildren(stats, toolbar, body,
+    el("p", { class: "muted", style: "font-size:12px;margin-top:12px" }, "Costs are list-price estimates of work volume, not a bill. Prompt and tool content are redacted by Claude Code and never stored here."));
+  schedule(renderList, 15);
+}
+function stat(v, k) { return el("div", { class: "stat" }, el("div", { class: "v" }, v), el("div", { class: "k" }, k)); }
+
+// ── one trace ──────────────────────────────────────────────────────────────
+const collapsed = new Set();
+let selected = null;
+
+async function renderTrace(id) {
+  $crumb.textContent = "/ trace";
+  let t, h = null;
+  try { h = await api("/healthz"); t = await api("/api/traces/" + encodeURIComponent(id)); }
+  catch (e) {
+    setConn(e.dead ? null : h);
+    if (e.dead) { $app.replaceChildren(deadBanner(10)); schedule(() => renderTrace(id), 10); return; }
+    $app.replaceChildren(el("div", { class: "banner bad" }, el("h2", {}, e.status === 404 ? "No such trace" : "Could not load this trace"),
+      el("p", {}, e.status === 404 ? "It may have aged out of retention, or the id is wrong. Trace ids change once: a repaired session first lists as s:<session>, then joins its parent's trace when the parent's spans arrive." : e.message),
+      el("p", {}, el("a", { href: "/", onclick: (ev) => { ev.preventDefault(); go("/"); } }, "Back to all traces"))));
+    return;
+  }
+  setConn(h);
+  const name = who(t.agent, t.cwd);
+  document.title = name + " trace";
+  const nodes = t.nodes || [];
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const kids = new Map();
+  const roots = [];
+  for (const n of nodes) {
+    if (n.parent && byId.has(n.parent)) { if (!kids.has(n.parent)) kids.set(n.parent, []); kids.get(n.parent).push(n); }
+    else roots.push(n);
+  }
+  for (const arr of kids.values()) arr.sort((a, b) => a.start_ms - b.start_ms);
+  roots.sort((a, b) => a.start_ms - b.start_ms);
+  const total = Math.max(1, t.dur_ms, ...nodes.map((n) => n.start_ms + n.dur_ms));
+  const detail = el("div", { class: "card detail" });
+  const tree = el("div", { class: "card tree" });
+  const rows = [];
+
+  function draw() {
+    rows.length = 0;
+    const out = [el("div", { class: "thead" }, el("div", {}, "Span"), el("div", { style: "text-align:right" }, "Duration"), el("div", { class: "wf-col", style: "height:auto;border:0" }, "Timeline (" + fmtMs(total) + ")"))];
+    const walk = (n, depth) => {
+      const ch = kids.get(n.id) || [];
+      const open = !collapsed.has(n.id);
+      const color = "var(--k-" + (KINDS.includes(n.kind) ? n.kind : "other") + ")";
+      const row = el("div", { class: "trow" + (n.error ? " err" : "") + (selected === n.id ? " sel" : ""), title: n.name,
+          onclick: () => { selected = n.id; showDetail(n); draw(); } },
+        el("div", { class: "nm", style: "padding-left:" + (8 + depth * 14) + "px" },
+          el("span", { class: "caret", onclick: (ev) => { if (!ch.length) return; ev.stopPropagation(); open ? collapsed.add(n.id) : collapsed.delete(n.id); draw(); } }, ch.length ? (open ? "▾" : "▸") : ""),
+          el("span", { class: "kind", style: "color:" + color }, n.kind),
+          el("span", { class: "lbl" }, n.label || n.name),
+          n.error ? el("span", { class: "tag err" }, "error") : null),
+        el("div", { class: "du" }, fmtMs(n.dur_ms)),
+        el("div", { class: "wf-col" }, el("div", { class: "bar", style: "left:" + (100 * n.start_ms / total).toFixed(3) + "%;width:" + Math.max(0.15, 100 * n.dur_ms / total).toFixed(3) + "%;background:" + color })));
+      out.push(row);
+      if (open) for (const c of ch) walk(c, depth + 1);
+    };
+    for (const r of roots) walk(r, 0);
+    tree.replaceChildren(...out);
+  }
+  function showDetail(n) {
+    const d = n.detail || {};
+    const own = Object.keys(d).filter((k) => !k.startsWith("gen_ai.") && k !== "error.type").sort();
+    const gen = Object.keys(d).filter((k) => k.startsWith("gen_ai.") || k === "error.type").sort();
+    const kv = (keys) => el("div", { class: "kv" }, keys.flatMap((k) => [el("div", { class: "k" }, k), el("div", { class: "v" }, typeof d[k] === "object" ? JSON.stringify(d[k]) : String(d[k]))]));
+    detail.replaceChildren(...[
+      el("h3", {}, n.label || n.name),
+      el("div", { class: "kv" },
+        el("div", { class: "k" }, "kind"), el("div", { class: "v" }, n.kind),
+        el("div", { class: "k" }, "span"), el("div", { class: "v" }, n.name),
+        el("div", { class: "k" }, "start"), el("div", { class: "v" }, "+" + fmtMs(n.start_ms)),
+        el("div", { class: "k" }, "duration"), el("div", { class: "v" }, fmtMs(n.dur_ms)),
+        n.usd ? el("div", { class: "k" }, "est. $") : null, n.usd ? el("div", { class: "v" }, fmtUsd(n.usd)) : null,
+        n.session_id ? el("div", { class: "k" }, "session") : null, n.session_id ? el("div", { class: "v" }, n.session_id) : null,
+        el("div", { class: "k" }, "id"), el("div", { class: "v" }, n.id)),
+      own.length ? el("div", { class: "sec" }, "Claude Code attributes") : null, own.length ? kv(own) : null,
+      gen.length ? el("div", { class: "sec" }, "OpenTelemetry GenAI conventions") : null, gen.length ? kv(gen) : null,
+      n.kind === "session" ? el("p", { class: "muted" }, "A session node groups one Claude Code session's spans. It is labelled by its agent (CCSTITCH_AGENT) or its working directory.") : null,
+    ].filter(Boolean));
+  }
+  const head = el("div", { class: "toolbar" },
+    el("a", { href: "/", onclick: (ev) => { ev.preventDefault(); go("/"); } }, "← all traces"),
+    el("strong", {}, name),
+    t.repaired ? el("span", { class: "tag rep", title: "Orphaned spans regrouped under their session (anthropics/claude-code#99607)" }, "repaired") : null,
+    t.errors ? el("span", { class: "tag err" }, t.errors + " err") : null,
+    el("span", { class: "muted" }, when(t.started_ns) + " · " + fmtMs(t.dur_ms) + " · " + t.sessions + " session" + (t.sessions === 1 ? "" : "s") + " · " + t.spans + " spans · " + fmtUsd(t.usd_equiv) + " est."),
+    el("span", { class: "sp" }),
+    el("button", { onclick: () => renderTrace(id) }, "Refresh"));
+  const legend = el("div", { class: "legend", style: "margin-bottom:10px" }, KINDS.map((k) => el("span", {}, el("i", { style: "background:var(--k-" + k + ")" }), k)));
+  const parts = [head];
+  if (t.truncated) parts.push(el("div", { class: "banner" }, el("p", {}, "This trace is larger than the viewer's span limit; the earliest spans are shown.")));
+  if (t.cwd) parts.push(el("p", { class: "muted mono", style: "margin:0 0 10px" }, t.cwd));
+  parts.push(legend, el("div", { class: "tview" }, tree, detail));
+  $app.replaceChildren(...parts);
+  const first = selected && byId.get(selected) || roots[0];
+  if (first) { selected = first.id; showDetail(first); } else detail.replaceChildren(el("p", { class: "muted" }, "This trace has no spans."));
+  draw();
+  const live = Date.now() - (t.started_ns / 1e6 + t.dur_ms) < 120000;
+  if (live) schedule(() => renderTrace(id), 15); else clearTimeout(timer);
+}
+
+// ── routing ────────────────────────────────────────────────────────────────
+function go(path) { history.pushState({}, "", path); route(); }
+function route() {
+  clearTimeout(timer);
+  const p = location.pathname;
+  if (p.startsWith("/t/")) { selected = null; collapsed.clear(); renderTrace(decodeURIComponent(p.slice(3))); }
+  else renderList();
+}
+window.addEventListener("popstate", route);
+route();
+</script>
+</body>
+</html>
